@@ -7,37 +7,47 @@
 //
 
 import UIKit
-import CoreData
+import RealmSwift
+import ChameleonFramework
 
-class CategoryViewController: UITableViewController {
+class CategoryViewController: SwipeTableViewController {
 
-    var categoryArray = [Category]()
+    let realm = try! Realm()
 
-    let context = (UIApplication.shared.delegate as! AppDelegate).persistentContainer.viewContext
-
+    var categories: Results<Category>?
+    
     override func viewDidLoad() {
         super.viewDidLoad()
         
         loadCategories()
-        
+    
+        tableView.separatorStyle = .none
     }
 
     // MARK: - Table view data source methods
     override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        return categoryArray.count
+        
+        return categories?.count ?? 1
+        
     }
     
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         
-        let cell = tableView.dequeueReusableCell(withIdentifier: "CategoryCell", for: indexPath)
-        let category = categoryArray[indexPath.row]
+        let cell = super.tableView(tableView, cellForRowAt: indexPath)
         
-        cell.textLabel?.text = category.name
+        if let category = categories?[indexPath.row] {
+            
+            cell.textLabel?.text = category.name
+            cell.backgroundColor = UIColor(hexString: category.color)
+            cell.textLabel?.textColor = ContrastColorOf(cell.backgroundColor!, returnFlat: true)
+    
+        }
         
         return cell
     }
     
     // MARK: - Table view delegate methods
+    
     override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         performSegue(withIdentifier: "goToItems", sender: self)
         
@@ -47,34 +57,46 @@ class CategoryViewController: UITableViewController {
         let destinationVC = segue.destination as! TodoListViewController
         
         if let indexPath = tableView.indexPathForSelectedRow {
-             destinationVC.selectedCategory = categoryArray[indexPath.row]
+             destinationVC.selectedCategory = categories?[indexPath.row]
         }
-        
     }
     
     // MARK: Data manipulation methods
     
-    func saveCategories() {
+    func save(category: Category) {
         
         do {
-            try context.save()
+            try realm.write {
+                realm.add(category)
+            }
         } catch {
             print("Error: saving category array \(error)")
         }
+        
         tableView.reloadData()
     }
     
-    func loadCategories(with request: NSFetchRequest<Category> = Category.fetchRequest()) {
+    func loadCategories() {
         
-        do {
-            categoryArray = try context.fetch(request)
-            
-        } catch {
-            print("Error getting categories - \(error)")
-        }
+        categories = realm.objects(Category.self)
         
         tableView.reloadData()
         
+    }
+    
+    // MARK: Delete data from swipe
+    
+    override func updateModel(at indexPath: IndexPath) {
+        
+        if let categoryForDeletion = self.categories?[indexPath.row] {
+            do {
+                try self.realm.write {
+                    self.realm.delete(categoryForDeletion)
+                }
+            } catch {
+                print("Error: deleting category, \(error)")
+            }
+        }
     }
     
     // MARK: Add new categories
@@ -88,17 +110,16 @@ class CategoryViewController: UITableViewController {
         let action = UIAlertAction(title: "Add Category", style: .default) { (action) in
             // What will happen when the user hits add item button
             
-            let newCategory = Category(context: self.context)
-            
+            let newCategory = Category()
             newCategory.name = textField.text!
-            self.categoryArray.append(newCategory)
+            newCategory.color = UIColor.randomFlat.hexValue()
             
-            self.saveCategories()
+            self.save(category: newCategory)
             
         }
         
         alert.addTextField { (alertTextField) in
-            alertTextField.placeholder = "Create New Category"
+            alertTextField.placeholder = "Create a new Category"
             textField = alertTextField
         }
         
